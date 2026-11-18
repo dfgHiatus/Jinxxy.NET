@@ -1,0 +1,94 @@
+name: Publish to NuGet
+
+# Manually triggered from the Actions tab: "Publish to NuGet" -> "Run workflow".
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version (SemVer, e.g. 0.1.0 or 0.2.0-beta.1)"
+        required: true
+        type: string
+      dry-run:
+        description: "Dry run: build and pack only, do not push to NuGet"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-nuget
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  PROJECT: src/Jinxxy.NET/Jinxxy.NET.csproj
+  OUTPUT: ${{ github.workspace }}/artifacts
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: nuget # optional: add protection rules (e.g. required reviewers) in repo settings
+    permissions:
+      contents: read
+      id-token: write # required for NuGet Trusted Publishing (OIDC)
+
+    steps:
+      - name: Validate inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          REF: ${{ github.ref }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$VERSION' is not a valid SemVer version (expected e.g. 1.2.3 or 1.2.3-beta.1)"
+            exit 1
+          fi
+          if [[ "$DRY_RUN" != "true" && "$REF" != "refs/heads/main" ]]; then
+            echo "::error::Real publishes must run from main (got $REF). Use dry-run for other branches."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore "$PROJECT"
+
+      - name: Build
+        run: dotnet build "$PROJECT" -c Release --no-restore -p:Version="${{ inputs.version }}"
+
+      - name: Pack
+        run: dotnet pack "$PROJECT" -c Release --no-build -p:Version="${{ inputs.version }}" -o "$OUTPUT"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-${{ inputs.version }}
+          path: |
+            ${{ env.OUTPUT }}/*.nupkg
+            ${{ env.OUTPUT }}/*.snupkg
+          if-no-files-found: error
+
+      - name: NuGet login (Trusted Publishing)
+        if: ${{ !inputs.dry-run }}
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }} # your nuget.org profile name, NOT your email
+
+      - name: Push to NuGet
+        if: ${{ !inputs.dry-run }}
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        # Pushing the .nupkg also pushes the matching .snupkg symbols package from the same folder.
+        run: |
+          dotnet nuget push "$OUTPUT/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

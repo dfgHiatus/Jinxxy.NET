@@ -22,7 +22,12 @@
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <!-- TODO before publishing: Authors, RepositoryUrl, PackageProjectUrl, PackageLicenseExpression -->
+    <Authors>dfgHiatus</Authors>
+    <Copyright>Copyright (c) 2026 dfgHiatus</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/dfgHiatus/Jinxxy.NET</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/dfgHiatus/Jinxxy.NET.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
